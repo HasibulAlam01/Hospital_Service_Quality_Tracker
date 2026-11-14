@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+hospital_tracker.db
+attachments/*
+backups/*
+reports/*
+test.pdf
