@@ -29,11 +29,16 @@ def get_departments():
     return departments
 
 
-def submit_complaint(user_id, department_id, subject, description):
-    """Save a new complaint. Returns (success, message, complaint_id)."""
+def submit_complaint(recorded_by, department_id, patient_name,
+                     patient_phone, ward_bed, subject, description):
+    """Staff records a complaint for a patient.
+    Returns (success, message, complaint_id)."""
 
-    if not subject.strip() or not description.strip():
-        return False, "Subject and description are required.", None
+    if (not patient_name.strip() or not subject.strip()
+            or not description.strip()):
+        return (False,
+                "Patient name, subject and description are required.",
+                None)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -41,15 +46,21 @@ def submit_complaint(user_id, department_id, subject, description):
     try:
         cursor.execute("""
             INSERT INTO complaints (
-                user_id,
+                recorded_by,
                 department_id,
+                patient_name,
+                patient_phone,
+                ward_bed,
                 subject,
                 description
             )
-            VALUES (?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
-            user_id,
+            recorded_by,
             department_id,
+            patient_name.strip(),
+            patient_phone.strip() or None,
+            ward_bed.strip() or None,
             subject.strip(),
             description.strip()
         ))
@@ -65,10 +76,10 @@ def submit_complaint(user_id, department_id, subject, description):
                 changed_by
             )
             VALUES (?, NULL, 'Pending', ?)
-        """, (complaint_id, user_id))
+        """, (complaint_id, recorded_by))
 
         conn.commit()
-        return True, "Complaint submitted successfully!", complaint_id
+        return True, "Complaint recorded successfully!", complaint_id
 
     except Exception as error:
         conn.rollback()
@@ -78,14 +89,15 @@ def submit_complaint(user_id, department_id, subject, description):
         conn.close()
 
 
-def get_patient_complaints(user_id):
-    """Return all complaints submitted by one patient."""
+def get_staff_complaints(user_id):
+    """Return the complaints recorded by one staff member."""
 
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
         SELECT c.complaint_id,
+               c.patient_name,
                d.department_name,
                c.subject,
                c.status,
@@ -93,8 +105,8 @@ def get_patient_complaints(user_id):
         FROM complaints c
         JOIN departments d
             ON c.department_id = d.department_id
-        WHERE c.user_id = ?
-        ORDER BY c.submitted_at DESC
+        WHERE c.recorded_by = ?
+        ORDER BY c.submitted_at DESC, c.complaint_id DESC
     """, (user_id,))
 
     complaints = cursor.fetchall()
@@ -111,17 +123,15 @@ def get_all_complaints():
 
     cursor.execute("""
         SELECT c.complaint_id,
-               u.full_name,
+               c.patient_name,
                d.department_name,
                c.subject,
                c.status,
                c.submitted_at
         FROM complaints c
-        JOIN users u
-            ON c.user_id = u.user_id
         JOIN departments d
             ON c.department_id = d.department_id
-        ORDER BY c.submitted_at DESC
+        ORDER BY c.submitted_at DESC, c.complaint_id DESC
     """)
 
     complaints = cursor.fetchall()
@@ -131,23 +141,27 @@ def get_all_complaints():
 
 
 def get_complaint_detail(complaint_id):
-    """Return full details of one complaint, or None if not found."""
+    """Return full details of one complaint, or None if not found.
+    Row: (id, patient_name, patient_phone, ward_bed, department,
+          subject, description, status, submitted_at, recorded_by)"""
 
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
         SELECT c.complaint_id,
-               u.full_name,
-               u.phone,
+               c.patient_name,
+               c.patient_phone,
+               c.ward_bed,
                d.department_name,
                c.subject,
                c.description,
                c.status,
-               c.submitted_at
+               c.submitted_at,
+               u.full_name
         FROM complaints c
         JOIN users u
-            ON c.user_id = u.user_id
+            ON c.recorded_by = u.user_id
         JOIN departments d
             ON c.department_id = d.department_id
         WHERE c.complaint_id = ?

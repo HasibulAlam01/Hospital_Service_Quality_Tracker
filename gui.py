@@ -6,11 +6,16 @@ from config import APP_NAME, ATTACHMENT_DIR
 from database import create_tables
 from reports_screen import show_reports_screen
 from backup_screen import show_backup_screen
-from auth import create_default_admin, authenticate_user, register_patient
+from auth import (
+    create_default_admin,
+    authenticate_user,
+    create_staff_account,
+    list_staff_accounts,
+)
 from complaints import (
     get_departments,
     submit_complaint,
-    get_patient_complaints,
+    get_staff_complaints,
     get_all_complaints,
     get_complaint_detail,
     save_attachment,
@@ -63,7 +68,7 @@ class App(ctk.CTk):
 
         ctk.CTkLabel(
             left,
-            text="Report problems, track their progress\n"
+            text="Record patient complaints, track their progress\n"
                  "and help improve hospital care.",
             font=("Segoe UI", 15),
             text_color="#b8c4d6", justify="left"
@@ -81,9 +86,9 @@ class App(ctk.CTk):
         self.configure(fg_color=("gray92", "gray14"))
         right = self.build_split_background()
 
-        box = ctk.CTkFrame(right, width=380, height=470,
+        box = ctk.CTkFrame(right, width=380, height=400,
                            fg_color="white", corner_radius=12)
-        box.place(x=60, y=65)
+        box.place(x=60, y=100)
         box.pack_propagate(False)
 
         ctk.CTkLabel(
@@ -129,13 +134,10 @@ class App(ctk.CTk):
             command=self.do_login
         ).pack(pady=(6, 0), padx=30)
 
-        ctk.CTkButton(
-            box, text="New patient? Create an account",
-            width=320, height=36,
-            fg_color="transparent", text_color="#0f6aa6",
-            hover_color="#eef3f9",
-            command=self.show_register
-        ).pack(pady=(12, 0), padx=30)
+        ctk.CTkLabel(
+            box, text="Staff accounts are created by the administrator.",
+            font=("Segoe UI", 12), text_color="#6b7789"
+        ).pack(pady=(14, 0))
 
         self.bind("<Return>", lambda event: self.do_login())
 
@@ -158,104 +160,13 @@ class App(ctk.CTk):
         self.unbind("<Return>")
         self.show_dashboard(user)
 
-    # ================= Register screen =================
-
-    def show_register(self):
-        self.unbind("<Return>")
-        self.clear()
-        right = self.build_split_background()
-
-        box = ctk.CTkFrame(right, width=380, height=530,
-                           fg_color="white", corner_radius=12)
-        box.place(x=60, y=35)
-        box.pack_propagate(False)
-
-        ctk.CTkLabel(
-            box, text="Create account",
-            font=("Segoe UI", 24, "bold"), text_color="#1a2433"
-        ).pack(pady=(25, 0), padx=30, anchor="w")
-
-        ctk.CTkLabel(
-            box, text="Register as a patient",
-            font=("Segoe UI", 13), text_color="#6b7789"
-        ).pack(padx=30, anchor="w", pady=(0, 12))
-
-        self.reg_name = ctk.CTkEntry(
-            box, width=320, height=38, placeholder_text="Full name *")
-        self.reg_name.pack(padx=30, pady=4)
-
-        self.reg_username = ctk.CTkEntry(
-            box, width=320, height=38, placeholder_text="Username *")
-        self.reg_username.pack(padx=30, pady=4)
-
-        self.reg_email = ctk.CTkEntry(
-            box, width=320, height=38, placeholder_text="Email (optional)")
-        self.reg_email.pack(padx=30, pady=4)
-
-        self.reg_phone = ctk.CTkEntry(
-            box, width=320, height=38, placeholder_text="Phone (optional)")
-        self.reg_phone.pack(padx=30, pady=4)
-
-        self.reg_password = ctk.CTkEntry(
-            box, width=320, height=38, show="*",
-            placeholder_text="Password (at least 8 characters) *")
-        self.reg_password.pack(padx=30, pady=4)
-
-        self.reg_confirm = ctk.CTkEntry(
-            box, width=320, height=38, show="*",
-            placeholder_text="Confirm password *")
-        self.reg_confirm.pack(padx=30, pady=4)
-
-        self.reg_message = ctk.CTkLabel(
-            box, text="", font=("Segoe UI", 12), text_color="#b42318"
-        )
-        self.reg_message.pack(pady=(8, 0))
-
-        ctk.CTkButton(
-            box, text="Register", width=320, height=42,
-            font=("Segoe UI", 15, "bold"),
-            command=self.do_register
-        ).pack(pady=(6, 0), padx=30)
-
-        ctk.CTkButton(
-            box, text="Back to login", width=320, height=34,
-            fg_color="transparent", text_color="#0f6aa6",
-            hover_color="#eef3f9",
-            command=self.show_login
-        ).pack(pady=(8, 0), padx=30)
-
-    def do_register(self):
-        password = self.reg_password.get()
-
-        if password != self.reg_confirm.get():
-            self.reg_message.configure(
-                text="Passwords do not match.", text_color="#b42318")
-            return
-
-        ok, message = register_patient(
-            self.reg_name.get(),
-            self.reg_username.get(),
-            self.reg_email.get(),
-            self.reg_phone.get(),
-            password
-        )
-
-        if ok:
-            self.reg_message.configure(
-                text=message + " Going to login...",
-                text_color="#157f3b")
-            self.after(1500, self.show_login)
-        else:
-            self.reg_message.configure(
-                text=message, text_color="#b42318")
-
     # ================= After login =================
 
     def show_dashboard(self, user):
         if user["role"] == "admin":
             self.show_admin_complaints(user)
         else:
-            self.show_submit_page(user)
+            self.show_register_complaint(user)
 
     def logout(self):
         self.selected_file = None
@@ -283,7 +194,12 @@ class App(ctk.CTk):
         ctk.CTkLabel(
             sidebar, text=user["full_name"][:24],
             font=("Segoe UI", 12), text_color="#8fc3ff"
-        ).pack(padx=20, anchor="w", pady=(0, 30))
+        ).pack(padx=20, anchor="w")
+
+        ctk.CTkLabel(
+            sidebar, text=user["role"].capitalize(),
+            font=("Segoe UI", 11), text_color="#6b7f9c"
+        ).pack(padx=20, anchor="w", pady=(0, 26))
 
         for key, text, command in menu_items:
             ctk.CTkButton(
@@ -306,12 +222,12 @@ class App(ctk.CTk):
         content.pack_propagate(False)
         return content
 
-    def build_patient_layout(self, user, active):
+    def build_staff_layout(self, user, active):
         return self.build_layout(user, [
-            ("submit", "Submit Complaint",
-             lambda: self.show_submit_page(user)),
-            ("complaints", "My Complaints",
-             lambda: self.show_my_complaints(user)),
+            ("register", "Register Complaint",
+             lambda: self.show_register_complaint(user)),
+            ("complaints", "Recorded Complaints",
+             lambda: self.show_staff_complaints(user)),
         ], active)
 
     def build_admin_layout(self, user, active):
@@ -320,67 +236,166 @@ class App(ctk.CTk):
              lambda: self.show_admin_complaints(user)),
             ("reports", "Reports",
              lambda: show_reports_screen(self, user)),
+            ("staff", "Manage Staff",
+             lambda: self.show_manage_staff(user)),
             ("backup", "Backup and Restore",
              lambda: show_backup_screen(self, user)),
         ], active)
 
-    # ================= Patient: submit complaint =================
+    # ================= Shared: complaint details block =================
 
-    def show_submit_page(self, user, message="", message_color="#157f3b"):
-        content = self.build_patient_layout(user, "submit")
+    def fill_details(self, scroll, detail, complaint_id):
+        """Fill a scrollable frame with everything about one complaint."""
+        (_, patient, phone, ward, dept, subject, description,
+         status, date, recorder) = detail
+
+        def title(text):
+            ctk.CTkLabel(
+                scroll, text=text, font=("Segoe UI", 15, "bold"),
+                text_color="#1a2433"
+            ).pack(anchor="w", padx=12, pady=(12, 4))
+
+        def line(text, color="#3b4658"):
+            ctk.CTkLabel(
+                scroll, text=text, font=("Segoe UI", 13),
+                text_color=color, justify="left",
+                wraplength=640, anchor="w"
+            ).pack(anchor="w", padx=22, pady=1)
+
+        title(subject)
+        line(f"Patient: {patient}    Phone: {phone or 'Not given'}")
+        line(f"Ward / Bed: {ward or 'Not given'}")
+        line(f"Department: {dept}")
+        line(f"Recorded by: {recorder}    Date: {date}")
+        line(f"Current status: {status}",
+             STATUS_COLORS.get(status, "#3b4658"))
+
+        title("Description")
+        line(description)
+
+        title("Attachments")
+        attachments = get_attachments(complaint_id)
+        if not attachments:
+            line("No attachments.", "#6b7789")
+        for _, name, stored, ftype, when in attachments:
+            row = ctk.CTkFrame(scroll, fg_color="transparent")
+            row.pack(anchor="w", padx=22, pady=2)
+            ctk.CTkLabel(
+                row, text=f"{name}  ({ftype})  uploaded {when}",
+                font=("Segoe UI", 13), text_color="#3b4658"
+            ).pack(side="left")
+            ctk.CTkButton(
+                row, text="Open file", width=80, height=26,
+                command=lambda s=stored: self.open_attachment(s)
+            ).pack(side="left", padx=10)
+
+        title("Status history")
+        for old, new, who, when in get_status_history(complaint_id):
+            line(f"{when}:  {old or 'New'}  ->  {new}   (by {who})")
+
+        title("Remarks from hospital management")
+        remarks = get_remarks(complaint_id)
+        if not remarks:
+            line("No remarks yet.", "#6b7789")
+        for _, who, text, when in remarks:
+            line(f"{when} - {who}:\n{text}")
+
+    def open_attachment(self, stored_name):
+        path = os.path.join(ATTACHMENT_DIR, stored_name)
+        if os.path.isfile(path):
+            os.startfile(path)
+
+    # ================= Staff: register complaint =================
+
+    def show_register_complaint(self, user, message="",
+                                message_color="#157f3b"):
+        content = self.build_staff_layout(user, "register")
         self.selected_file = None
 
         ctk.CTkLabel(
-            content, text="Submit a Complaint",
+            content, text="Register a Complaint",
             font=("Segoe UI", 24, "bold"), text_color="#1a2433"
-        ).pack(pady=(30, 0), padx=30, anchor="w")
+        ).pack(pady=(22, 0), padx=30, anchor="w")
 
         ctk.CTkLabel(
-            content, text="Tell us about the problem you faced.",
+            content,
+            text="Record the problem reported by a patient or attendant.",
             font=("Segoe UI", 13), text_color="#6b7789"
-        ).pack(padx=30, anchor="w", pady=(0, 15))
+        ).pack(padx=30, anchor="w", pady=(0, 8))
 
         self.departments = get_departments()
         self.dept_map = {name: dept_id for dept_id, name in self.departments}
 
-        ctk.CTkLabel(
-            content, text="Department", font=("Segoe UI", 13, "bold"),
-            text_color="#1a2433"
-        ).pack(padx=30, anchor="w")
+        label_font = ("Segoe UI", 13, "bold")
 
+        # Row 1: patient name and phone
+        row1 = ctk.CTkFrame(content, fg_color="transparent")
+        row1.pack(padx=30, anchor="w")
+
+        col = ctk.CTkFrame(row1, fg_color="transparent")
+        col.pack(side="left")
+        ctk.CTkLabel(col, text="Patient name *", font=label_font,
+                     text_color="#1a2433").pack(anchor="w")
+        self.patient_name_entry = ctk.CTkEntry(
+            col, width=340, height=36, placeholder_text="Full name")
+        self.patient_name_entry.pack(pady=(2, 8))
+
+        col = ctk.CTkFrame(row1, fg_color="transparent")
+        col.pack(side="left", padx=(20, 0))
+        ctk.CTkLabel(col, text="Patient phone", font=label_font,
+                     text_color="#1a2433").pack(anchor="w")
+        self.patient_phone_entry = ctk.CTkEntry(
+            col, width=340, height=36, placeholder_text="Optional")
+        self.patient_phone_entry.pack(pady=(2, 8))
+
+        # Row 2: ward/bed and department
+        row2 = ctk.CTkFrame(content, fg_color="transparent")
+        row2.pack(padx=30, anchor="w")
+
+        col = ctk.CTkFrame(row2, fg_color="transparent")
+        col.pack(side="left")
+        ctk.CTkLabel(col, text="Ward / Bed", font=label_font,
+                     text_color="#1a2433").pack(anchor="w")
+        self.ward_entry = ctk.CTkEntry(
+            col, width=340, height=36, placeholder_text="Optional")
+        self.ward_entry.pack(pady=(2, 8))
+
+        col = ctk.CTkFrame(row2, fg_color="transparent")
+        col.pack(side="left", padx=(20, 0))
+        ctk.CTkLabel(col, text="Department *", font=label_font,
+                     text_color="#1a2433").pack(anchor="w")
         self.dept_menu = ctk.CTkOptionMenu(
-            content, values=list(self.dept_map.keys()),
-            width=320, height=36
-        )
-        self.dept_menu.pack(padx=30, anchor="w", pady=(4, 10))
+            col, values=list(self.dept_map.keys()), width=340, height=36)
+        self.dept_menu.pack(pady=(2, 8))
 
+        # Subject
         ctk.CTkLabel(
-            content, text="Subject", font=("Segoe UI", 13, "bold"),
+            content, text="Subject *", font=label_font,
             text_color="#1a2433"
         ).pack(padx=30, anchor="w")
 
         self.subject_entry = ctk.CTkEntry(
-            content, width=700, height=38,
-            placeholder_text="Short title of the problem"
-        )
-        self.subject_entry.pack(padx=30, anchor="w", pady=(4, 10))
+            content, width=700, height=36,
+            placeholder_text="Short title of the problem")
+        self.subject_entry.pack(padx=30, anchor="w", pady=(2, 8))
 
+        # Description
         ctk.CTkLabel(
-            content, text="Description", font=("Segoe UI", 13, "bold"),
+            content, text="Description *", font=label_font,
             text_color="#1a2433"
         ).pack(padx=30, anchor="w")
 
         self.description_box = ctk.CTkTextbox(
-            content, width=700, height=130,
-            fg_color="white", border_width=1, border_color="#d3dae5"
-        )
-        self.description_box.pack(padx=30, anchor="w", pady=(4, 10))
+            content, width=700, height=85,
+            fg_color="white", border_width=1, border_color="#d3dae5")
+        self.description_box.pack(padx=30, anchor="w", pady=(2, 8))
 
+        # Attachment
         file_row = ctk.CTkFrame(content, fg_color="transparent")
         file_row.pack(padx=30, anchor="w")
 
         ctk.CTkButton(
-            file_row, text="Choose file (optional)", width=170, height=34,
+            file_row, text="Choose file (optional)", width=170, height=32,
             fg_color="#e8eef6", text_color="#0f6aa6",
             hover_color="#d6e2f0",
             command=self.choose_file
@@ -388,21 +403,23 @@ class App(ctk.CTk):
 
         self.file_label = ctk.CTkLabel(
             file_row, text="No file selected  (JPG, PNG or PDF, max 5 MB)",
-            font=("Segoe UI", 12), text_color="#6b7789"
-        )
+            font=("Segoe UI", 12), text_color="#6b7789")
         self.file_label.pack(side="left", padx=12)
 
-        self.submit_message = ctk.CTkLabel(
-            content, text=message, font=("Segoe UI", 13),
-            text_color=message_color
-        )
-        self.submit_message.pack(padx=30, anchor="w", pady=(10, 0))
+        # Submit button and message on one row
+        bottom = ctk.CTkFrame(content, fg_color="transparent")
+        bottom.pack(padx=30, anchor="w", pady=(10, 0))
 
         ctk.CTkButton(
-            content, text="Submit Complaint", width=220, height=42,
+            bottom, text="Register Complaint", width=220, height=40,
             font=("Segoe UI", 15, "bold"),
             command=lambda: self.do_submit(user)
-        ).pack(padx=30, anchor="w", pady=(6, 0))
+        ).pack(side="left")
+
+        self.submit_message = ctk.CTkLabel(
+            bottom, text=message, font=("Segoe UI", 13),
+            text_color=message_color)
+        self.submit_message.pack(side="left", padx=14)
 
     def choose_file(self):
         path = filedialog.askopenfilename(
@@ -415,11 +432,15 @@ class App(ctk.CTk):
 
     def do_submit(self, user):
         dept_id = self.dept_map[self.dept_menu.get()]
-        subject = self.subject_entry.get()
-        description = self.description_box.get("1.0", "end")
 
         ok, message, complaint_id = submit_complaint(
-            user["user_id"], dept_id, subject, description
+            user["user_id"],
+            dept_id,
+            self.patient_name_entry.get(),
+            self.patient_phone_entry.get(),
+            self.ward_entry.get(),
+            self.subject_entry.get(),
+            self.description_box.get("1.0", "end"),
         )
 
         if not ok:
@@ -432,31 +453,33 @@ class App(ctk.CTk):
                 complaint_id, self.selected_file)
             if not file_ok:
                 message += "  (File not attached: " + file_message + ")"
-                self.show_submit_page(user, message, "#b54708")
+                self.show_register_complaint(user, message, "#b54708")
                 return
 
-        self.show_submit_page(user, message, "#157f3b")
+        self.show_register_complaint(user, message, "#157f3b")
 
-    # ================= Patient: my complaints =================
+    # ================= Staff: recorded complaints =================
 
-    def show_my_complaints(self, user):
-        content = self.build_patient_layout(user, "complaints")
+    def show_staff_complaints(self, user):
+        content = self.build_staff_layout(user, "complaints")
 
         ctk.CTkLabel(
-            content, text="My Complaints",
+            content, text="Recorded Complaints",
             font=("Segoe UI", 24, "bold"), text_color="#1a2433"
         ).pack(pady=(30, 0), padx=30, anchor="w")
 
         ctk.CTkLabel(
-            content, text="Click View to see remarks and progress.",
+            content,
+            text="Complaints you recorded. Click View for remarks "
+                 "and progress.",
             font=("Segoe UI", 13), text_color="#6b7789"
         ).pack(padx=30, anchor="w", pady=(0, 12))
 
-        rows = get_patient_complaints(user["user_id"])
+        rows = get_staff_complaints(user["user_id"])
 
         if not rows:
             ctk.CTkLabel(
-                content, text="You have not submitted any complaints yet.",
+                content, text="You have not recorded any complaints yet.",
                 font=("Segoe UI", 14), text_color="#6b7789"
             ).pack(padx=30, anchor="w", pady=20)
             return
@@ -465,54 +488,50 @@ class App(ctk.CTk):
             content, width=700, height=420, fg_color="white")
         table.pack(padx=30, anchor="w")
 
-        widths = [40, 110, 210, 90, 120, 70]
-        headers = ["ID", "Department", "Subject", "Status", "Date", ""]
+        widths = [35, 110, 95, 170, 85, 100, 65]
+        headers = ["ID", "Patient", "Department", "Subject",
+                   "Status", "Date", ""]
 
         for col, (text, width) in enumerate(zip(headers, widths)):
             ctk.CTkLabel(
                 table, text=text, width=width, anchor="w",
                 font=("Segoe UI", 12, "bold"), text_color="#6b7789"
-            ).grid(row=0, column=col, padx=4, pady=(6, 8))
+            ).grid(row=0, column=col, padx=3, pady=(6, 8))
 
-        for r, (cid, dept, subject, status, date) in enumerate(rows, start=1):
-            values = [str(cid), dept, subject[:28], status, date[:16]]
+        for r, (cid, patient, dept, subject, status, date) in enumerate(
+                rows, start=1):
+            values = [str(cid), patient[:14], dept, subject[:22],
+                      status, date[:10]]
 
             for col, (text, width) in enumerate(zip(values, widths)):
                 color = "#1a2433"
-                if col == 3:
+                if col == 4:
                     color = STATUS_COLORS.get(status, "#1a2433")
                 ctk.CTkLabel(
                     table, text=text, width=width, anchor="w",
-                    font=("Segoe UI", 13,
-                          "bold" if col == 3 else "normal"),
+                    font=("Segoe UI", 12,
+                          "bold" if col == 4 else "normal"),
                     text_color=color
-                ).grid(row=r, column=col, padx=4, pady=6)
+                ).grid(row=r, column=col, padx=3, pady=6)
 
             ctk.CTkButton(
-                table, text="View", width=60, height=28,
-                command=lambda c=cid: self.show_complaint_details(user, c)
-            ).grid(row=r, column=5, padx=4, pady=6)
+                table, text="View", width=55, height=28,
+                command=lambda c=cid: self.show_staff_details(user, c)
+            ).grid(row=r, column=6, padx=3, pady=6)
 
-    # ================= Patient: complaint details =================
+    # ================= Staff: complaint details =================
 
-    def show_complaint_details(self, user, complaint_id,
-                               message="", message_color="#157f3b"):
-        content = self.build_patient_layout(user, "complaints")
+    def show_staff_details(self, user, complaint_id,
+                           message="", message_color="#157f3b"):
+        content = self.build_staff_layout(user, "complaints")
 
-        info = None
-        for row in get_patient_complaints(user["user_id"]):
-            if row[0] == complaint_id:
-                info = row
-                break
-
-        if info is None:
-            self.show_my_complaints(user)
-            return
-
+        # Staff can only open complaints they recorded
+        my_ids = [row[0] for row in get_staff_complaints(user["user_id"])]
         detail = get_complaint_detail(complaint_id)
-        description = detail[5] if detail else ""
 
-        _, dept, subject, status, date = info
+        if complaint_id not in my_ids or detail is None:
+            self.show_staff_complaints(user)
+            return
 
         top = ctk.CTkFrame(content, fg_color="transparent")
         top.pack(fill="x", padx=30, pady=(25, 0))
@@ -521,7 +540,7 @@ class App(ctk.CTk):
             top, text="< Back", width=70, height=30,
             fg_color="#e8eef6", text_color="#0f6aa6",
             hover_color="#d6e2f0",
-            command=lambda: self.show_my_complaints(user)
+            command=lambda: self.show_staff_complaints(user)
         ).pack(side="left")
 
         ctk.CTkLabel(
@@ -533,45 +552,7 @@ class App(ctk.CTk):
             content, width=700, height=400, fg_color="white")
         scroll.pack(padx=30, pady=(12, 0), anchor="w")
 
-        def title(text):
-            ctk.CTkLabel(
-                scroll, text=text, font=("Segoe UI", 15, "bold"),
-                text_color="#1a2433"
-            ).pack(anchor="w", padx=12, pady=(14, 4))
-
-        def line(text, color="#3b4658"):
-            ctk.CTkLabel(
-                scroll, text=text, font=("Segoe UI", 13),
-                text_color=color, justify="left",
-                wraplength=640, anchor="w"
-            ).pack(anchor="w", padx=22, pady=1)
-
-        title(subject)
-        line(f"Department: {dept}")
-        line(f"Submitted: {date}")
-        line(f"Current status: {status}",
-             STATUS_COLORS.get(status, "#3b4658"))
-
-        title("Description")
-        line(description)
-
-        title("Status history")
-        for old, new, who, when in get_status_history(complaint_id):
-            line(f"{when}:  {old or 'New'}  ->  {new}   (by {who})")
-
-        title("Remarks from hospital")
-        remarks = get_remarks(complaint_id)
-        if not remarks:
-            line("No remarks yet.", "#6b7789")
-        for _, who, text, when in remarks:
-            line(f"{when} - {who}:\n{text}")
-
-        title("Attachments")
-        attachments = get_attachments(complaint_id)
-        if not attachments:
-            line("No attachments.", "#6b7789")
-        for _, name, _, ftype, when in attachments:
-            line(f"{name}  ({ftype})  uploaded {when}")
+        self.fill_details(scroll, detail, complaint_id)
 
         bottom = ctk.CTkFrame(content, fg_color="transparent")
         bottom.pack(fill="x", padx=30, pady=(10, 0))
@@ -595,7 +576,7 @@ class App(ctk.CTk):
             return
 
         ok, message = save_attachment(complaint_id, path)
-        self.show_complaint_details(
+        self.show_staff_details(
             user, complaint_id, message,
             "#157f3b" if ok else "#b42318"
         )
@@ -655,9 +636,9 @@ class App(ctk.CTk):
                 font=("Segoe UI", 12, "bold"), text_color="#6b7789"
             ).grid(row=0, column=col, padx=3, pady=(6, 8))
 
-        for r, (cid, name, dept, subject, status, date) in enumerate(
+        for r, (cid, patient, dept, subject, status, date) in enumerate(
                 rows, start=1):
-            values = [str(cid), name[:14], dept, subject[:22],
+            values = [str(cid), patient[:14], dept, subject[:22],
                       status, date[:10]]
 
             for col, (text, width) in enumerate(zip(values, widths)):
@@ -687,7 +668,7 @@ class App(ctk.CTk):
             self.show_admin_complaints(user)
             return
 
-        _, patient, phone, dept, subject, description, status, date = detail
+        status = detail[7]
 
         top = ctk.CTkFrame(content, fg_color="transparent")
         top.pack(fill="x", padx=30, pady=(20, 0))
@@ -734,55 +715,7 @@ class App(ctk.CTk):
             content, width=700, height=290, fg_color="white")
         scroll.pack(padx=30, pady=(10, 0), anchor="w")
 
-        def title(text):
-            ctk.CTkLabel(
-                scroll, text=text, font=("Segoe UI", 15, "bold"),
-                text_color="#1a2433"
-            ).pack(anchor="w", padx=12, pady=(12, 4))
-
-        def line(text, color="#3b4658"):
-            ctk.CTkLabel(
-                scroll, text=text, font=("Segoe UI", 13),
-                text_color=color, justify="left",
-                wraplength=640, anchor="w"
-            ).pack(anchor="w", padx=22, pady=1)
-
-        title(subject)
-        line(f"Patient: {patient}    Phone: {phone or 'Not given'}")
-        line(f"Department: {dept}")
-        line(f"Submitted: {date}")
-        line(f"Current status: {status}",
-             STATUS_COLORS.get(status, "#3b4658"))
-
-        title("Description")
-        line(description)
-
-        title("Attachments")
-        attachments = get_attachments(complaint_id)
-        if not attachments:
-            line("No attachments.", "#6b7789")
-        for _, name, stored, ftype, when in attachments:
-            row = ctk.CTkFrame(scroll, fg_color="transparent")
-            row.pack(anchor="w", padx=22, pady=2)
-            ctk.CTkLabel(
-                row, text=f"{name}  ({ftype})  uploaded {when}",
-                font=("Segoe UI", 13), text_color="#3b4658"
-            ).pack(side="left")
-            ctk.CTkButton(
-                row, text="Open file", width=80, height=26,
-                command=lambda s=stored: self.open_attachment(s)
-            ).pack(side="left", padx=10)
-
-        title("Status history")
-        for old, new, who, when in get_status_history(complaint_id):
-            line(f"{when}:  {old or 'New'}  ->  {new}   (by {who})")
-
-        title("Remarks")
-        remarks = get_remarks(complaint_id)
-        if not remarks:
-            line("No remarks yet.", "#6b7789")
-        for _, who, text, when in remarks:
-            line(f"{when} - {who}:\n{text}")
+        self.fill_details(scroll, detail, complaint_id)
 
         # Add remark
         remark_row = ctk.CTkFrame(content, fg_color="transparent")
@@ -790,7 +723,7 @@ class App(ctk.CTk):
 
         remark_entry = ctk.CTkEntry(
             remark_row, width=560, height=36,
-            placeholder_text="Write a remark for the patient...")
+            placeholder_text="Write a remark for this complaint...")
         remark_entry.pack(side="left")
 
         ctk.CTkButton(
@@ -814,10 +747,121 @@ class App(ctk.CTk):
             "#157f3b" if ok else "#b42318"
         )
 
-    def open_attachment(self, stored_name):
-        path = os.path.join(ATTACHMENT_DIR, stored_name)
-        if os.path.isfile(path):
-            os.startfile(path)
+    # ================= Admin: manage staff =================
+
+    def show_manage_staff(self, user, message="", message_color="#157f3b"):
+        content = self.build_admin_layout(user, "staff")
+
+        ctk.CTkLabel(
+            content, text="Manage Staff",
+            font=("Segoe UI", 24, "bold"), text_color="#1a2433"
+        ).pack(pady=(25, 0), padx=30, anchor="w")
+
+        ctk.CTkLabel(
+            content,
+            text="Create accounts for hospital staff who record complaints.",
+            font=("Segoe UI", 13), text_color="#6b7789"
+        ).pack(padx=30, anchor="w", pady=(0, 8))
+
+        form = ctk.CTkFrame(content, fg_color="white", corner_radius=10)
+        form.pack(padx=30, anchor="w")
+
+        def entry(parent, placeholder, show=None):
+            e = ctk.CTkEntry(parent, width=330, height=36,
+                             placeholder_text=placeholder, show=show)
+            return e
+
+        row1 = ctk.CTkFrame(form, fg_color="transparent")
+        row1.pack(padx=14, pady=(12, 0))
+        self.st_name = entry(row1, "Full name *")
+        self.st_name.pack(side="left", padx=(0, 10))
+        self.st_username = entry(row1, "Username *")
+        self.st_username.pack(side="left")
+
+        row2 = ctk.CTkFrame(form, fg_color="transparent")
+        row2.pack(padx=14, pady=(8, 0))
+        self.st_email = entry(row2, "Email (optional)")
+        self.st_email.pack(side="left", padx=(0, 10))
+        self.st_phone = entry(row2, "Phone (optional)")
+        self.st_phone.pack(side="left")
+
+        row3 = ctk.CTkFrame(form, fg_color="transparent")
+        row3.pack(padx=14, pady=(8, 0))
+        self.st_password = entry(
+            row3, "Password (at least 8 characters) *", show="*")
+        self.st_password.pack(side="left", padx=(0, 10))
+        self.st_confirm = entry(row3, "Confirm password *", show="*")
+        self.st_confirm.pack(side="left")
+
+        row4 = ctk.CTkFrame(form, fg_color="transparent")
+        row4.pack(padx=14, pady=(10, 12), anchor="w")
+        ctk.CTkButton(
+            row4, text="Create staff account", width=200, height=36,
+            command=lambda: self.do_create_staff(user)
+        ).pack(side="left")
+        self.staff_message = ctk.CTkLabel(
+            row4, text=message, font=("Segoe UI", 12),
+            text_color=message_color)
+        self.staff_message.pack(side="left", padx=12)
+
+        ctk.CTkLabel(
+            content, text="Existing staff accounts",
+            font=("Segoe UI", 15, "bold"), text_color="#1a2433"
+        ).pack(padx=30, anchor="w", pady=(12, 4))
+
+        rows = list_staff_accounts()
+
+        if not rows:
+            ctk.CTkLabel(
+                content, text="No staff accounts yet.",
+                font=("Segoe UI", 13), text_color="#6b7789"
+            ).pack(padx=30, anchor="w")
+            return
+
+        table = ctk.CTkScrollableFrame(
+            content, width=700, height=170, fg_color="white")
+        table.pack(padx=30, anchor="w")
+
+        widths = [40, 200, 140, 130, 130]
+        headers = ["ID", "Name", "Username", "Phone", "Created"]
+
+        for col, (text, width) in enumerate(zip(headers, widths)):
+            ctk.CTkLabel(
+                table, text=text, width=width, anchor="w",
+                font=("Segoe UI", 12, "bold"), text_color="#6b7789"
+            ).grid(row=0, column=col, padx=3, pady=(6, 6))
+
+        for r, (uid, name, username, phone, created) in enumerate(
+                rows, start=1):
+            values = [str(uid), name[:26], username, phone or "-",
+                      created[:10]]
+            for col, (text, width) in enumerate(zip(values, widths)):
+                ctk.CTkLabel(
+                    table, text=text, width=width, anchor="w",
+                    font=("Segoe UI", 12), text_color="#1a2433"
+                ).grid(row=r, column=col, padx=3, pady=4)
+
+    def do_create_staff(self, user):
+        password = self.st_password.get()
+
+        if password != self.st_confirm.get():
+            self.staff_message.configure(
+                text="Passwords do not match.", text_color="#b42318")
+            return
+
+        ok, message = create_staff_account(
+            self.st_name.get(),
+            self.st_username.get(),
+            self.st_email.get(),
+            self.st_phone.get(),
+            password
+        )
+
+        if ok:
+            self.show_manage_staff(user, message, "#157f3b")
+        else:
+            self.staff_message.configure(
+                text=message, text_color="#b42318")
 
 
 if __name__ == "__main__":

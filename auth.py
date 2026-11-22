@@ -1,4 +1,3 @@
-
 import sqlite3
 import hashlib
 import secrets
@@ -93,8 +92,9 @@ def create_default_admin():
     conn.close()
 
 
-def register_patient(full_name, username, email, phone, password):
-    """Register a new patient."""
+def create_staff_account(full_name, username, email, phone, password):
+    """Create a hospital staff account (done by the admin).
+    Returns (success, message)."""
 
     if not all([
         full_name.strip(),
@@ -121,7 +121,7 @@ def register_patient(full_name, username, email, phone, password):
                 password_hash,
                 role
             )
-            VALUES (?, ?, ?, ?, ?, 'patient')
+            VALUES (?, ?, ?, ?, ?, 'staff')
         """, (
             full_name.strip(),
             username.strip(),
@@ -131,13 +131,32 @@ def register_patient(full_name, username, email, phone, password):
         ))
 
         conn.commit()
-        return True, "Patient registration successful!"
+        return True, "Staff account created successfully!"
 
     except sqlite3.IntegrityError:
         return False, "Username or email already exists."
 
     finally:
         conn.close()
+
+
+def list_staff_accounts():
+    """Return all staff accounts, newest first."""
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT user_id, full_name, username, phone, created_at
+        FROM users
+        WHERE role = 'staff'
+        ORDER BY created_at DESC, user_id DESC
+    """)
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return rows
 
 
 def authenticate_user(username, password):

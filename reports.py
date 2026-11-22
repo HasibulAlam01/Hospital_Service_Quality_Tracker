@@ -57,7 +57,7 @@ def get_overdue_complaints():
 
     cursor.execute("""
         SELECT c.complaint_id,
-               u.full_name,
+               c.patient_name,
                d.department_name,
                c.subject,
                c.status,
@@ -65,8 +65,6 @@ def get_overdue_complaints():
                CAST(julianday('now') - julianday(c.submitted_at)
                     AS INTEGER)
         FROM complaints c
-        JOIN users u
-            ON c.user_id = u.user_id
         JOIN departments d
             ON c.department_id = d.department_id
         WHERE c.status != 'Resolved'

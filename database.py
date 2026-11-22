@@ -1,4 +1,3 @@
-
 import sqlite3
 from config import DATABASE_PATH
 
@@ -16,7 +15,20 @@ def create_tables():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # 1. Users table
+    # Stop with a clear message if an old-format database is found
+    cursor.execute(
+        "SELECT sql FROM sqlite_master "
+        "WHERE type = 'table' AND name = 'users'"
+    )
+    row = cursor.fetchone()
+    if row and "'patient'" in row[0]:
+        conn.close()
+        raise RuntimeError(
+            "Old database format found. Delete hospital_tracker.db "
+            "and start the program again."
+        )
+
+    # 1. Users table (hospital staff and admin)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,7 +37,7 @@ def create_tables():
             email TEXT UNIQUE,
             phone TEXT,
             password_hash TEXT NOT NULL,
-            role TEXT NOT NULL CHECK(role IN ('patient', 'admin')),
+            role TEXT NOT NULL CHECK(role IN ('staff', 'admin')),
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -40,18 +52,21 @@ def create_tables():
         )
     """)
 
-    # 3. Complaints table
+    # 3. Complaints table (recorded by staff for a patient)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS complaints (
             complaint_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
+            recorded_by INTEGER NOT NULL,
             department_id INTEGER NOT NULL,
+            patient_name TEXT NOT NULL,
+            patient_phone TEXT,
+            ward_bed TEXT,
             subject TEXT NOT NULL,
             description TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'Pending'
                 CHECK(status IN ('Pending', 'In Progress', 'Resolved')),
             submitted_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(user_id),
+            FOREIGN KEY (recorded_by) REFERENCES users(user_id),
             FOREIGN KEY (department_id)
                 REFERENCES departments(department_id)
         )
